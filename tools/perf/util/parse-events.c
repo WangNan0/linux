@@ -484,7 +484,7 @@ int parse_events_add_tracepoint(struct list_head *list, int *idx,
 
 int parse_events_load_bpf(struct parse_events_evlist *data,
 			  struct list_head *list,
-			  char *bpf_file_name)
+			  char *bpf_file_name, bool source)
 {
 	int err;
 	char errbuf[BUFSIZ];
@@ -522,9 +522,9 @@ int parse_events_load_bpf(struct parse_events_evlist *data,
 	zfree(&dummy_evsel->name);
 	dummy_evsel->name = strdup(bpf_file_name);
 
-	err = bpf__prepare_load(bpf_file_name);
+	err = bpf__prepare_load(bpf_file_name, source);
 	if (err) {
-		bpf__strerror_prepare_load(bpf_file_name, err,
+		bpf__strerror_prepare_load(bpf_file_name, source, err,
 					   errbuf, sizeof(errbuf));
 		list_del_init(&dummy_evsel->node);
 		perf_evsel__delete(dummy_evsel);
