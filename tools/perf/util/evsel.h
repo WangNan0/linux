@@ -120,6 +120,7 @@ struct perf_evsel {
 	bool			cmdline_group_boundary;
 	bool			is_dummy;
 	struct list_head	config_terms;
+	int			bpf_fd;
 };
 
 union u64_swap {
