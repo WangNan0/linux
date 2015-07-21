@@ -59,5 +59,7 @@ static int (*bpf_l3_csum_replace)(void *ctx, int off, int from, int to, int flag
 	(void *) BPF_FUNC_l3_csum_replace;
 static int (*bpf_l4_csum_replace)(void *ctx, int off, int from, int to, int flags) =
 	(void *) BPF_FUNC_l4_csum_replace;
+static int (*bpf_output_trace_data)(void *src, int size) =
+	(void *) BPF_FUNC_output_trace_data;
 
 #endif

@@ -11,7 +11,10 @@
 #include <linux/filter.h>
 #include <linux/uaccess.h>
 #include <linux/ctype.h>
+
 #include "trace.h"
+#define CREATE_TRACE_POINTS
+#include <trace/events/bpf.h>
 
 static DEFINE_PER_CPU(int, bpf_prog_active);
 
@@ -77,6 +80,24 @@ static const struct bpf_func_proto bpf_probe_read_proto = {
 	.arg1_type	= ARG_PTR_TO_STACK,
 	.arg2_type	= ARG_CONST_STACK_SIZE,
 	.arg3_type	= ARG_ANYTHING,
+};
+
+static u64 bpf_output_trace_data(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5)
+{
+	void *src = (void *) (long) r1;
+	int size = (int) r2;
+
+	trace_bpf_output_data(src, size);
+
+	return 0;
+}
+
+static const struct bpf_func_proto bpf_output_trace_data_proto = {
+	.func		= bpf_output_trace_data,
+	.gpl_only	= true,
+	.ret_type	= RET_INTEGER,
+	.arg1_type	= ARG_PTR_TO_STACK,
+	.arg2_type	= ARG_CONST_STACK_SIZE,
 };
 
 /*
@@ -169,6 +190,8 @@ static const struct bpf_func_proto *kprobe_prog_func_proto(enum bpf_func_id func
 		return &bpf_map_delete_elem_proto;
 	case BPF_FUNC_probe_read:
 		return &bpf_probe_read_proto;
+	case BPF_FUNC_output_trace_data:
+		return &bpf_output_trace_data_proto;
 	case BPF_FUNC_ktime_get_ns:
 		return &bpf_ktime_get_ns_proto;
 	case BPF_FUNC_tail_call:

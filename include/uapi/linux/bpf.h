@@ -249,6 +249,13 @@ enum bpf_func_id {
 	 * Return: 0 on success
 	 */
 	BPF_FUNC_get_current_comm,
+
+	/**
+	 * int bpf_output_trace_data(void *src, int size)
+	 * Return: 0 on success
+	 */
+	BPF_FUNC_output_trace_data,
+
 	__BPF_FUNC_MAX_ID,
 };
 
