@@ -195,6 +195,10 @@ static struct test {
 		.func = test_session_topology,
 	},
 	{
+		.desc = "Test BPF filter",
+		.func = test__bpf,
+	},
+	{
 		.func = NULL,
 	},
 };
