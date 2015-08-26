@@ -1143,10 +1143,14 @@ int parse_events(struct perf_evlist *evlist, const char *str,
 		int entries = data.idx - evlist->nr_entries;
 		struct perf_evsel *last;
 
+		if (!list_empty(&data.list)) {
+			last = list_entry(data.list.prev,
+					  struct perf_evsel, node);
+			last->cmdline_group_boundary = true;
+		}
+
 		perf_evlist__splice_list_tail(evlist, &data.list, entries);
 		evlist->nr_groups += data.nr_groups;
-		last = perf_evlist__last(evlist);
-		last->cmdline_group_boundary = true;
 
 		return 0;
 	}
