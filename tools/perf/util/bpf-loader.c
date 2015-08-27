@@ -293,6 +293,12 @@ int bpf__foreach_tev(bpf_prog_iter_callback_t func, void *arg)
 	int err;
 
 	bpf_object__for_each_safe(obj, tmp) {
+		const char *obj_name;
+
+		obj_name = bpf_object__get_name(obj);
+		if (!obj_name)
+			obj_name = "[unknown]";
+
 		bpf_object__for_each_program(prog, obj) {
 			struct probe_trace_event *tev;
 			struct perf_probe_event *pev;
@@ -316,7 +322,7 @@ int bpf__foreach_tev(bpf_prog_iter_callback_t func, void *arg)
 					return fd;
 				}
 
-				err = func(tev, fd, arg);
+				err = func(tev, obj_name, fd, arg);
 				if (err) {
 					pr_debug("bpf: call back failed, stop iterate\n");
 					return err;
