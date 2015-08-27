@@ -1113,7 +1113,6 @@ int cmd_record(int argc, const char **argv, const char *prefix __maybe_unused)
 
 	argc = parse_options(argc, argv, record_options, record_usage,
 			    PARSE_OPT_STOP_AT_NON_OPTION);
-	perf_evlist__purge_dummy(rec->evlist);
 
 	if (!argc && target__none(&rec->opts.target))
 		usage_with_options(record_usage, record_options);
@@ -1178,6 +1177,11 @@ int cmd_record(int argc, const char **argv, const char *prefix __maybe_unused)
 		pr_err("Failed to add events from BPF object(s)\n");
 		goto out_symbol_exit;
 	}
+	/*
+	 * Until now let's purge dummy event. Filter options should
+	 * have been attached to real events by perf_evlist__add_bpf().
+	 */
+	perf_evlist__purge_dummy(rec->evlist);
 
 	symbol__init(NULL);
 
