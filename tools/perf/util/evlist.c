@@ -197,7 +197,45 @@ error:
 	return -ENOMEM;
 }
 
-static int add_bpf_event(struct probe_trace_event *tev, int fd,
+static void
+sync_with_dummy(struct perf_evlist *evlist, const char *obj_name,
+		struct list_head *list)
+{
+	struct perf_evsel *dummy_evsel, *pos;
+	const char *filter;
+	bool found = false;
+	int err;
+
+	evlist__for_each(evlist, dummy_evsel) {
+		if (!perf_evsel__is_dummy(dummy_evsel))
+			continue;
+
+		if (strcmp(dummy_evsel->name, obj_name) == 0) {
+			found = true;
+			break;
+		}
+	}
+
+	if (!found) {
+		pr_debug("Failed to find dummy event of '%s'\n",
+			 obj_name);
+		return;
+	}
+
+	filter = dummy_evsel->filter;
+	if (!filter)
+		return;
+
+	list_for_each_entry(pos, list, node) {
+		err = perf_evsel__set_filter(pos, filter);
+		if (err)
+			pr_debug("Failed to set filter '%s' to evsel %s\n",
+				 filter, pos->name);
+	}
+}
+
+static int add_bpf_event(struct probe_trace_event *tev,
+			 const char *obj_name, int fd,
 			 void *arg)
 {
 	struct perf_evlist *evlist = arg;
@@ -205,8 +243,8 @@ static int add_bpf_event(struct probe_trace_event *tev, int fd,
 	struct list_head list;
 	int err, idx, entries;
 
-	pr_debug("add bpf event %s:%s and attach bpf program %d\n",
-			tev->group, tev->event, fd);
+	pr_debug("add bpf event %s:%s and attach bpf program %d (from %s)\n",
+			tev->group, tev->event, fd, obj_name);
 	INIT_LIST_HEAD(&list);
 	idx = evlist->nr_entries;
 
@@ -228,6 +266,15 @@ static int add_bpf_event(struct probe_trace_event *tev, int fd,
 	list_for_each_entry(pos, &list, node)
 		pos->bpf_fd = fd;
 	entries = idx - evlist->nr_entries;
+
+	sync_with_dummy(evlist, obj_name, &list);
+
+	/*
+	 * Currectly we don't need to link those new events at the
+	 * same place where dummy node reside because order of
+	 * events in cmdline won't be used after
+	 * 'perf_evlist__add_bpf'.
+	 */
 	perf_evlist__splice_list_tail(evlist, &list, entries);
 	return 0;
 }
