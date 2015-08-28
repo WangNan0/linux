@@ -1696,3 +1696,22 @@ void perf_evlist__set_tracking_event(struct perf_evlist *evlist,
 
 	tracking_evsel->tracking = true;
 }
+
+void perf_evlist__purge_dummy(struct perf_evlist *evlist)
+{
+	struct perf_evsel *pos, *n;
+
+	/*
+	 * Remove all dummy events.
+	 * During linking, we don't touch anything except link
+	 * it into evlist. As a result, we don't
+	 * need to adjust evlist->nr_entries during removal.
+	 */
+
+	evlist__for_each_safe(evlist, n, pos) {
+		if (perf_evsel__is_dummy(pos)) {
+			list_del_init(&pos->node);
+			perf_evsel__delete(pos);
+		}
+	}
+}

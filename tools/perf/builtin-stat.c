@@ -1209,6 +1209,7 @@ int cmd_stat(int argc, const char **argv, const char *prefix __maybe_unused)
 
 	argc = parse_options(argc, argv, options, stat_usage,
 		PARSE_OPT_STOP_AT_NON_OPTION);
+	perf_evlist__purge_dummy(evsel_list);
 
 	interval = stat_config.interval;
 

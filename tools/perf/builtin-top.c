@@ -1199,6 +1199,7 @@ int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 	perf_config(perf_top_config, &top);
 
 	argc = parse_options(argc, argv, options, top_usage, 0);
+	perf_evlist__purge_dummy(top.evlist);
 	if (argc)
 		usage_with_options(top_usage, options);
 

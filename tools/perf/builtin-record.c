@@ -1113,6 +1113,8 @@ int cmd_record(int argc, const char **argv, const char *prefix __maybe_unused)
 
 	argc = parse_options(argc, argv, record_options, record_usage,
 			    PARSE_OPT_STOP_AT_NON_OPTION);
+	perf_evlist__purge_dummy(rec->evlist);
+
 	if (!argc && target__none(&rec->opts.target))
 		usage_with_options(record_usage, record_options);
 

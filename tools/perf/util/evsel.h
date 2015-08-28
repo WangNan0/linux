@@ -118,6 +118,7 @@ struct perf_evsel {
 	struct perf_evsel	*leader;
 	char			*group_name;
 	bool			cmdline_group_boundary;
+	bool			is_dummy;
 	struct list_head	config_terms;
 };
 
@@ -153,6 +154,11 @@ int perf_evsel__object_config(size_t object_size,
 			      void (*fini)(struct perf_evsel *evsel));
 
 struct perf_evsel *perf_evsel__new_idx(struct perf_event_attr *attr, int idx);
+struct perf_evsel *perf_evsel__new_dummy(const char *name);
+static inline bool perf_evsel__is_dummy(struct perf_evsel *evsel)
+{
+	return evsel->is_dummy;
+}
 
 static inline struct perf_evsel *perf_evsel__new(struct perf_event_attr *attr)
 {
