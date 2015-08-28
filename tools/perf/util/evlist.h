@@ -181,6 +181,7 @@ bool perf_evlist__valid_read_format(struct perf_evlist *evlist);
 void perf_evlist__splice_list_tail(struct perf_evlist *evlist,
 				   struct list_head *list,
 				   int nr_entries);
+void perf_evlist__purge_dummy(struct perf_evlist *evlist);
 
 static inline struct perf_evsel *perf_evlist__first(struct perf_evlist *evlist)
 {

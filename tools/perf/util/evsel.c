@@ -213,6 +213,7 @@ void perf_evsel__init(struct perf_evsel *evsel,
 	evsel->sample_size = __perf_evsel__sample_size(attr->sample_type);
 	perf_evsel__calc_id_pos(evsel);
 	evsel->cmdline_group_boundary = false;
+	evsel->is_dummy = false;
 }
 
 struct perf_evsel *perf_evsel__new_idx(struct perf_event_attr *attr, int idx)
@@ -223,6 +224,37 @@ struct perf_evsel *perf_evsel__new_idx(struct perf_event_attr *attr, int idx)
 		perf_evsel__init(evsel, attr, idx);
 
 	return evsel;
+}
+
+struct perf_evsel *perf_evsel__new_dummy(const char *name)
+{
+	struct perf_evsel *evsel = zalloc(perf_evsel__object.size);
+
+	if (!evsel)
+		return NULL;
+
+	/*
+	 * Don't need call perf_evsel__init() for dummy evsel.
+	 * Keep it simple.
+	 */
+	evsel->name = strdup(name);
+	if (!evsel->name)
+		goto out_free;
+
+	INIT_LIST_HEAD(&evsel->node);
+	INIT_LIST_HEAD(&evsel->config_terms);
+
+	evsel->cmdline_group_boundary = false;
+	/*
+	 * Set dummy evsel as TRACEPOINT event so it can collect filter
+	 * options.
+	 */
+	evsel->attr.type = PERF_TYPE_TRACEPOINT;
+	evsel->is_dummy = true;
+	return evsel;
+out_free:
+	free(evsel);
+	return NULL;
 }
 
 struct perf_evsel *perf_evsel__newtp_idx(const char *sys, const char *name, int idx)

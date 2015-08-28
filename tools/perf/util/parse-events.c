@@ -1141,7 +1141,7 @@ int parse_events(struct perf_evlist *evlist, const char *str,
 	perf_pmu__parse_cleanup();
 	if (!ret) {
 		int entries = data.idx - evlist->nr_entries;
-		struct perf_evsel *last;
+		struct perf_evsel *last = NULL;
 
 		if (!list_empty(&data.list)) {
 			last = list_entry(data.list.prev,
@@ -1149,8 +1149,25 @@ int parse_events(struct perf_evlist *evlist, const char *str,
 			last->cmdline_group_boundary = true;
 		}
 
-		perf_evlist__splice_list_tail(evlist, &data.list, entries);
-		evlist->nr_groups += data.nr_groups;
+		if (last && perf_evsel__is_dummy(last)) {
+			if (!list_is_singular(&data.list)) {
+				parse_events_evlist_error(&data, 0,
+					"Dummy evsel error: not on a singular list");
+				return -1;
+			}
+			/*
+			 * We are introducing a dummy event. Don't touch
+			 * anything, just link it.
+			 *
+			 * Don't use perf_evlist__splice_list_tail() since
+			 * it alerts evlist->nr_entries, which affect header
+			 * of resulting perf.data.
+			 */
+			list_splice_tail(&data.list, &evlist->entries);
+		} else {
+			perf_evlist__splice_list_tail(evlist, &data.list, entries);
+			evlist->nr_groups += data.nr_groups;
+		}
 
 		return 0;
 	}
@@ -1256,7 +1273,7 @@ foreach_evsel_in_last_glob(struct perf_evlist *evlist,
 	struct perf_evsel *last = NULL;
 	int err;
 
-	if (evlist->nr_entries > 0)
+	if (!list_empty(&evlist->entries))
 		last = perf_evlist__last(evlist);
 
 	do {
