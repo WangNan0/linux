@@ -29,6 +29,7 @@
 #include "util/data.h"
 #include "util/auxtrace.h"
 #include "util/parse-branch-options.h"
+#include "util/bpf-loader.h"
 
 #include <unistd.h>
 #include <sched.h>
@@ -1131,13 +1132,13 @@ int cmd_record(int argc, const char **argv, const char *prefix __maybe_unused)
 	if (!rec->itr) {
 		rec->itr = auxtrace_record__init(rec->evlist, &err);
 		if (err)
-			return err;
+			goto out_bpf_clear;
 	}
 
 	err = auxtrace_parse_snapshot_options(rec->itr, &rec->opts,
 					      rec->opts.auxtrace_snapshot_opts);
 	if (err)
-		return err;
+		goto out_bpf_clear;
 
 	err = -ENOMEM;
 
@@ -1200,6 +1201,8 @@ out_symbol_exit:
 	perf_evlist__delete(rec->evlist);
 	symbol__exit();
 	auxtrace_record__free(rec->itr);
+out_bpf_clear:
+	bpf__clear();
 	return err;
 }
 
