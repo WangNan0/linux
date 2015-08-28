@@ -59,6 +59,7 @@
 #include "util/thread.h"
 #include "util/thread_map.h"
 #include "util/counts.h"
+#include "util/bpf-loader.h"
 
 #include <stdlib.h>
 #include <sys/prctl.h>
@@ -1234,7 +1235,8 @@ int cmd_stat(int argc, const char **argv, const char *prefix __maybe_unused)
 		output = fopen(output_name, mode);
 		if (!output) {
 			perror("failed to create output file");
-			return -1;
+			status = -1;
+			goto out;
 		}
 		clock_gettime(CLOCK_REALTIME, &tm);
 		fprintf(output, "# started on %s\n", ctime(&tm.tv_sec));
@@ -1243,7 +1245,8 @@ int cmd_stat(int argc, const char **argv, const char *prefix __maybe_unused)
 		output = fdopen(output_fd, mode);
 		if (!output) {
 			perror("Failed opening logfd");
-			return -errno;
+			status = -errno;
+			goto out;
 		}
 	}
 
@@ -1376,5 +1379,6 @@ int cmd_stat(int argc, const char **argv, const char *prefix __maybe_unused)
 	perf_evlist__free_stats(evsel_list);
 out:
 	perf_evlist__delete(evsel_list);
+	bpf__clear();
 	return status;
 }
