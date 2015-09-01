@@ -63,6 +63,8 @@ int test__fdarray__add(void);
 int test__kmod_path__parse(void);
 int test__thread_map(void);
 int test__llvm(void);
+void test__llvm_prepare(void);
+void test__llvm_cleanup(void);
 int test__insn_x86(void);
 int test_session_topology(void);
 
