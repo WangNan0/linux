@@ -821,6 +821,9 @@ void parse_events__set_leader(char *name, struct list_head *list)
 {
 	struct perf_evsel *leader;
 
+	if (list_empty(list))
+		return;
+
 	__perf_evlist__set_leader(list);
 	leader = list_entry(list->next, struct perf_evsel, node);
 	leader->group_name = name ? strdup(name) : NULL;
