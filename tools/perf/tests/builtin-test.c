@@ -17,6 +17,8 @@
 static struct test {
 	const char *desc;
 	int (*func)(void);
+	void (*prepare)(void);
+	void (*cleanup)(void);
 } tests[] = {
 	{
 		.desc = "vmlinux symtab matches kallsyms",
@@ -177,6 +179,8 @@ static struct test {
 	{
 		.desc = "Test LLVM searching and compiling",
 		.func = test__llvm,
+		.prepare = test__llvm_prepare,
+		.cleanup = test__llvm_cleanup,
 	},
 #ifdef HAVE_AUXTRACE_SUPPORT
 #if defined(__x86_64__) || defined(__i386__)
@@ -278,7 +282,11 @@ static int __cmd_test(int argc, const char *argv[], struct intlist *skiplist)
 		}
 
 		pr_debug("\n--- start ---\n");
+		if (t->prepare)
+			t->prepare();
 		err = run_test(t);
+		if (t->cleanup)
+			t->cleanup();
 		pr_debug("---- end ----\n%s:", t->desc);
 
 		switch (err) {
