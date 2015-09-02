@@ -19,6 +19,7 @@
 #include "thread_map.h"
 #include "cpumap.h"
 #include "asm/bug.h"
+#include "bpf-loader.h"
 
 #define MAX_NAME_LEN 100
 
@@ -479,6 +480,60 @@ int parse_events_add_tracepoint(struct list_head *list, int *idx,
 		return add_tracepoint_multi_sys(list, idx, sys, event);
 	else
 		return add_tracepoint_event(list, idx, sys, event);
+}
+
+int parse_events_load_bpf(struct parse_events_evlist *data,
+			  struct list_head *list,
+			  char *bpf_file_name)
+{
+	int err;
+	char errbuf[BUFSIZ];
+	struct perf_evsel *dummy_evsel;
+
+	/*
+	 * Currently don't link useful event to list. BPF object files
+	 * should be saved to a seprated list and processed together.
+	 *
+	 * Things could be changed if we solve perf probe reentering
+	 * problem. After that probe events file by file is possible.
+	 * However, probing cost is still need to be considered.
+	 *
+	 * We should still link something onto evlist to make it
+	 * compatible with other events, or we have to find another
+	 * way to collect --filter options and modifiers (currently
+	 * modifiers are not allowed lexicically). evsel->tracking
+	 * is another thing needs to be considered. Fortunately we have
+	 * dummy evsel, which is originally designed for collecting
+	 * evsel->tracking.
+	 */
+	err = parse_events_add_numeric(data, list, PERF_TYPE_SOFTWARE,
+				       PERF_COUNT_SW_DUMMY, NULL);
+	if (err)
+		return err;
+	if (list_empty(list) || !list_is_singular(list)) {
+		data->error->str = strdup(
+			"Internal error: failed to alloc dummy evsel");
+		return -ENOENT;
+	}
+
+	dummy_evsel = list_entry(list->prev, struct perf_evsel, node);
+
+	/* Give it a better name so we can connect this list to the object */
+	zfree(&dummy_evsel->name);
+	dummy_evsel->name = strdup(bpf_file_name);
+
+	err = bpf__prepare_load(bpf_file_name);
+	if (err) {
+		bpf__strerror_prepare_load(bpf_file_name, err,
+					   errbuf, sizeof(errbuf));
+		list_del_init(&dummy_evsel->node);
+		perf_evsel__delete(dummy_evsel);
+		data->error->str = strdup(errbuf);
+		data->error->help = strdup("(add -v to see detail)");
+		return err;
+	}
+
+	return 0;
 }
 
 static int

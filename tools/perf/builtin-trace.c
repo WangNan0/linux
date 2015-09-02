@@ -30,6 +30,7 @@
 #include "util/intlist.h"
 #include "util/thread_map.h"
 #include "util/stat.h"
+#include "util/bpf-loader.h"
 #include "trace-event.h"
 #include "util/parse-events.h"
 
@@ -3108,6 +3109,7 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 	if (trace.evlist->nr_entries > 0)
 		evlist__set_evsel_handler(trace.evlist, trace__event_handler);
 
+	/* trace__record calls cmd_record, which calls bpf__clear() */
 	if ((argc >= 1) && (strcmp(argv[0], "record") == 0))
 		return trace__record(&trace, argc-1, &argv[1]);
 
@@ -3118,7 +3120,8 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 	if (!trace.trace_syscalls && !trace.trace_pgfaults &&
 	    trace.evlist->nr_entries == 0 /* Was --events used? */) {
 		pr_err("Please specify something to trace.\n");
-		return -1;
+		err = -1;
+		goto out;
 	}
 
 	if (output_name != NULL) {
@@ -3177,5 +3180,6 @@ out_close:
 	if (output_name != NULL)
 		fclose(trace.output);
 out:
+	bpf__clear();
 	return err;
 }
