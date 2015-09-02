@@ -41,6 +41,7 @@
 #include "util/sort.h"
 #include "util/intlist.h"
 #include "util/parse-branch-options.h"
+#include "util/bpf-loader.h"
 #include "arch/common.h"
 
 #include "util/debug.h"
@@ -1270,8 +1271,10 @@ int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 	symbol_conf.priv_size = sizeof(struct annotation);
 
 	symbol_conf.try_vmlinux_path = (symbol_conf.vmlinux_name == NULL);
-	if (symbol__init(NULL) < 0)
-		return -1;
+	if (symbol__init(NULL) < 0) {
+		status = -1;
+		goto out_bpf_clear;
+	}
 
 	sort__setup_elide(stdout);
 
@@ -1289,6 +1292,7 @@ int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 
 out_delete_evlist:
 	perf_evlist__delete(top.evlist);
-
+out_bpf_clear:
+	bpf__clear();
 	return status;
 }
