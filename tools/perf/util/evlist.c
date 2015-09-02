@@ -197,7 +197,54 @@ error:
 	return -ENOMEM;
 }
 
-static int add_bpf_event(struct probe_trace_event *tev, int fd,
+static void sync_with_bpf_placeholder(struct perf_evlist *evlist,
+				      const char *obj_name,
+				      struct list_head *list)
+{
+	struct perf_evsel *dummy_evsel, *pos;
+
+	const char *filter;
+	bool tracking_set = false;
+	bool found = false;
+
+	evlist__for_each(evlist, dummy_evsel) {
+		if (!perf_evsel__is_bpf_placeholder(dummy_evsel))
+			continue;
+		
+		if (strcmp(dummy_evsel->name, obj_name) == 0) {
+			found = true;
+			break;
+		}
+	}
+
+	if (!found) {
+		pr_debug("Failed to find dummy event of '%s'\n",
+			 obj_name);
+		return;
+	}
+
+	filter = dummy_evsel->filter;
+
+	list_for_each_entry(pos, list, node) {
+		if (filter && perf_evsel__set_filter(pos, filter)) {
+			pr_debug("Failed to set filter '%s' to evsel %s\n",
+				 filter, pos->name);
+		}
+
+		/* Sync tracking */
+		if (dummy_evsel->tracking && !tracking_set)
+			pos->tracking = tracking_set = true;
+
+		/*
+		 * If someday we allow to add config terms or modifiers
+		 * to placeholder, we should sync them with real events
+		 * here. Currently only tracking needs to be considered.
+		 */
+	}
+}
+
+static int add_bpf_event(struct probe_trace_event *tev,
+			 const char *obj_name, int fd,
 			 void *arg)
 {
 	struct perf_evlist *evlist = arg;
@@ -205,8 +252,8 @@ static int add_bpf_event(struct probe_trace_event *tev, int fd,
 	struct list_head list;
 	int err, idx, entries;
 
-	pr_debug("add bpf event %s:%s and attach bpf program %d\n",
-			tev->group, tev->event, fd);
+	pr_debug("add bpf event %s:%s and attach bpf program %d (from %s)\n",
+			tev->group, tev->event, fd, obj_name);
 	INIT_LIST_HEAD(&list);
 	idx = evlist->nr_entries;
 
@@ -228,13 +275,33 @@ static int add_bpf_event(struct probe_trace_event *tev, int fd,
 	list_for_each_entry(pos, &list, node)
 		pos->bpf_fd = fd;
 	entries = idx - evlist->nr_entries;
+
+	sync_with_bpf_placeholder(evlist, obj_name, &list);
+	/*
+	 * Currectly we don't need to link those new events at the
+	 * same place where dummy node reside because order of
+	 * events in cmdline won't be used after
+	 * 'perf_evlist__add_bpf'.
+	 */
 	perf_evlist__splice_list_tail(evlist, &list, entries);
 	return 0;
 }
 
 int perf_evlist__add_bpf(struct perf_evlist *evlist)
 {
-	return bpf__foreach_tev(add_bpf_event, evlist);
+	struct perf_evsel *pos, *n;
+	int err;
+
+	err = bpf__foreach_tev(add_bpf_event, evlist);
+
+	evlist__for_each_safe(evlist, n, pos) {
+		if (perf_evsel__is_bpf_placeholder(pos)) {
+			list_del_init(&pos->node);
+			perf_evsel__delete(pos);
+			evlist->nr_entries--;
+		}
+	}
+	return err;
 }
 
 static int perf_evlist__add_attrs(struct perf_evlist *evlist,

@@ -13,6 +13,7 @@
 #define PERF_BPF_PROBE_GROUP "perf_bpf_probe"
 
 typedef int (*bpf_prog_iter_callback_t)(struct probe_trace_event *tev,
+					const char *obj_name,
 					int fd, void *arg);
 
 #ifdef HAVE_LIBBPF_SUPPORT
