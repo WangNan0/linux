@@ -2344,3 +2344,35 @@ int perf_evsel__open_strerror(struct perf_evsel *evsel, struct target *target,
 			 err, strerror_r(err, sbuf, sizeof(sbuf)),
 			 perf_evsel__name(evsel));
 }
+
+bool perf_evsel__is_bpf_placeholder(struct perf_evsel *evsel)
+{
+	if (!perf_evsel__is_dummy(evsel))
+		return false;
+	if (!evsel->name)
+		return false;
+	/*
+	 * If evsel->name doesn't starts with 'dummy', it must be a BPF
+	 * place holder.
+	 */
+	if (strncmp(evsel->name, perf_evsel__sw_names[PERF_COUNT_SW_DUMMY],
+			strlen(perf_evsel__sw_names[PERF_COUNT_SW_DUMMY])))
+		return true;
+	/*
+	 * Very rare case: evsel->name is 'dummy_crazy.bpf'.
+	 *
+	 * Let's check name suffix. A bpf file should ends with one of:
+	 * '.o', '.c' or '.bpf'.
+	 */
+#define SUFFIX_CMP(s)\
+	strcmp(evsel->name + strlen(evsel->name) - (sizeof(s) - 1), s)
+
+	if (SUFFIX_CMP(".o") == 0)
+		return true;
+	if (SUFFIX_CMP(".c") == 0)
+		return true;
+	if (SUFFIX_CMP(".bpf") == 0)
+		return true;
+	return false;
+#undef SUFFIX_CMP
+}
