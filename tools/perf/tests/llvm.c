@@ -36,7 +36,7 @@ static int test__bpf_parsing(void *obj_buf __maybe_unused,
 #endif
 
 static char *
-compose_source(void)
+compose_source(void *raw_source)
 {
 	struct utsname utsname;
 	int version, patchlevel, sublevel, err;
@@ -56,7 +56,7 @@ compose_source(void)
 
 	version_code = (version << 16) + (patchlevel << 8) + sublevel;
 	err = asprintf(&code, "#define LINUX_VERSION_CODE 0x%08lx;\n%s",
-		       version_code, test_llvm__bpf_prog);
+		       version_code, raw_source);
 	if (err < 0)
 		return NULL;
 
@@ -65,6 +65,7 @@ compose_source(void)
 
 #define SHARED_BUF_INIT_SIZE	(1 << 20)
 struct test_llvm__bpf_result *p_test_llvm__bpf_result;
+struct test_llvm__bpf_result *p_test_llvm__bpf_with_arg_result;
 
 int test__llvm(void)
 {
@@ -73,6 +74,8 @@ int test__llvm(void)
 	size_t obj_buf_sz;
 	int err, old_verbose;
 	char *source;
+	void *raw_source = &test_llvm__bpf_prog;
+	struct test_llvm__bpf_result **p_result = &p_test_llvm__bpf_result;
 
 	perf_config(perf_config_cb, NULL);
 
@@ -99,7 +102,8 @@ int test__llvm(void)
 	if (!llvm_param.clang_opt)
 		llvm_param.clang_opt = strdup("");
 
-	source = compose_source();
+agein:
+	source = compose_source(raw_source);
 	if (!source) {
 		pr_err("Failed to compose source code\n");
 		return -1;
@@ -125,54 +129,85 @@ int test__llvm(void)
 
 	verbose = old_verbose;
 	if (err) {
-		if (!verbose)
-			fprintf(stderr, " (use -v to see error message)");
-		return -1;
+		if (raw_source == &test_llvm__bpf_prog) {
+			if (!verbose)
+				fprintf(stderr, " (use -v to see error message)");
+			return -1;
+		} else {
+			if (!verbose)
+				fprintf(stderr, " (check your kbuild dir setting)");
+			return 0;
+		}
 	}
 
 	err = test__bpf_parsing(obj_buf, obj_buf_sz);
-	if (!err && p_test_llvm__bpf_result) {
+	if (!err && *p_result) {
 		if (obj_buf_sz > SHARED_BUF_INIT_SIZE) {
 			pr_err("Resulting object too large\n");
 		} else {
-			p_test_llvm__bpf_result->size = obj_buf_sz;
-			memcpy(p_test_llvm__bpf_result->object,
+			(*p_result)->size = obj_buf_sz;
+			memcpy((*p_result)->object,
 			       obj_buf, obj_buf_sz);
 		}
 	}
 	free(obj_buf);
-	return err;
+
+	if (err)
+		return err;
+	if (raw_source == &test_llvm__bpf_prog) {
+		/* Redo our work, compile the second example */
+		p_result = &p_test_llvm__bpf_with_arg_result;
+		raw_source = &test_llvm__bpf_prog_with_arg;
+		goto again;
+	}
+
+	return 0;
 }
 
 void test__llvm_prepare(void)
 {
-	p_test_llvm__bpf_result = mmap(NULL, SHARED_BUF_INIT_SIZE,
-				       PROT_READ | PROT_WRITE,
-				       MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-	if (!p_test_llvm__bpf_result)
+	struct test_llvm__bpf_result **p_result = &p_test_llvm__bpf_result;
+
+again:
+	*p_result = mmap(NULL, SHARED_BUF_INIT_SIZE,
+			PROT_READ | PROT_WRITE,
+			MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	if (!(*p_result))
 		return;
-	memset((void *)p_test_llvm__bpf_result, '\0', SHARED_BUF_INIT_SIZE);
+	memset((void *)(*p_result), '\0', SHARED_BUF_INIT_SIZE);
+
+	if (p_result == &p_test_llvm__bpf_result) {
+		p_result = &p_test_llvm__bpf_with_arg_result;
+		goto again;
+	}
 }
 
 void test__llvm_cleanup(void)
 {
 	unsigned long boundary, buf_end;
+	struct test_llvm__bpf_result **p_result = &p_test_llvm__bpf_result;
 
-	if (!p_test_llvm__bpf_result)
+again:
+	if (!(*p_result))
 		return;
-	if (p_test_llvm__bpf_result->size == 0) {
-		munmap((void *)p_test_llvm__bpf_result, SHARED_BUF_INIT_SIZE);
+	if ((*p_result)->size == 0) {
+		munmap((void *)(*p_result), SHARED_BUF_INIT_SIZE);
 		p_test_llvm__bpf_result = NULL;
 		return;
 	}
 
-	buf_end = (unsigned long)p_test_llvm__bpf_result + SHARED_BUF_INIT_SIZE;
+	buf_end = (unsigned long)(*p_result) + SHARED_BUF_INIT_SIZE;
 
-	boundary = (unsigned long)(p_test_llvm__bpf_result);
-	boundary += p_test_llvm__bpf_result->size;
+	boundary = (unsigned long)(*p_result);
+	boundary += (*p_result)->size;
 	boundary = (boundary + (page_size - 1)) &
 			(~((unsigned long)page_size - 1));
 	munmap((void *)boundary, buf_end - boundary);
+
+	if (p_result == &p_test_llvm__bpf_result) {
+		p_result = &p_test_llvm__bpf_with_arg_result;
+		goto again;
+	}
 }
 
 void
