@@ -1345,7 +1345,7 @@ static int set_filter(struct perf_evsel *evsel, const void *arg)
 {
 	const char *str = arg;
 
-	if (evsel == NULL || evsel->attr.type != PERF_TYPE_TRACEPOINT) {
+	if (!perf_evsel__can_filter(evsel)) {
 		fprintf(stderr,
 			"--filter option should follow a -e tracepoint option\n");
 		return -1;
@@ -1374,7 +1374,7 @@ static int add_exclude_perf_filter(struct perf_evsel *evsel,
 {
 	char new_filter[64];
 
-	if (evsel == NULL || evsel->attr.type != PERF_TYPE_TRACEPOINT) {
+	if (!perf_evsel__can_filter(evsel)) {
 		fprintf(stderr,
 			"--exclude-perf option should follow a -e tracepoint option\n");
 		return -1;

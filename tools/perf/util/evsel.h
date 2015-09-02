@@ -372,9 +372,32 @@ bool perf_evsel__fallback(struct perf_evsel *evsel, int err,
 int perf_evsel__open_strerror(struct perf_evsel *evsel, struct target *target,
 			      int err, char *msg, size_t size);
 
+bool perf_evsel__is_bpf_placeholder(struct perf_evsel *evsel);
+
 static inline int perf_evsel__group_idx(struct perf_evsel *evsel)
 {
 	return evsel->idx - evsel->leader->idx;
+}
+
+static inline bool perf_evsel__is_dummy(struct perf_evsel *evsel)
+{
+	if (!evsel)
+		return false;
+	if (evsel->attr.type != PERF_TYPE_SOFTWARE)
+		return false;
+	if (evsel->attr.config != PERF_COUNT_SW_DUMMY)
+		return false;
+	return true;
+}
+
+static inline int perf_evsel__can_filter(struct perf_evsel *evsel)
+{
+	if (!evsel)
+		return false;
+	if (evsel->attr.type == PERF_TYPE_TRACEPOINT)
+		return true;
+
+	return perf_evsel__is_bpf_placeholder(evsel);
 }
 
 #define for_each_group_member(_evsel, _leader) 					\

@@ -1222,6 +1222,9 @@ int perf_evlist__apply_filters(struct perf_evlist *evlist, struct perf_evsel **e
 		if (evsel->filter == NULL)
 			continue;
 
+		if (perf_evsel__is_dummy(evsel))
+			continue;
+
 		err = perf_evsel__apply_filter(evsel, ncpus, nthreads, evsel->filter);
 		if (err) {
 			*err_evsel = evsel;
