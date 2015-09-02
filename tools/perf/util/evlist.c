@@ -1223,6 +1223,13 @@ int perf_evlist__apply_filters(struct perf_evlist *evlist, struct perf_evsel **e
 			continue;
 
 		/*
+		 * Filters are allowed to be set to dummy event for BPF object
+		 * placeholder. Don't really apply them.
+		 */
+		if (perf_evsel__is_dummy(evsel))
+			continue;
+
+		/*
 		 * filters only work for tracepoint event, which doesn't have cpu limit.
 		 * So evlist and evsel should always be same.
 		 */
