@@ -793,6 +793,11 @@ void parse_events__set_leader(char *name, struct list_head *list)
 {
 	struct perf_evsel *leader;
 
+	if (list_empty(list)) {
+		__WARN_printf("WARNING: failed to set leader: empty list");
+		return;
+	}
+
 	__perf_evlist__set_leader(list);
 	leader = list_entry(list->next, struct perf_evsel, node);
 	leader->group_name = name ? strdup(name) : NULL;
@@ -1143,10 +1148,15 @@ int parse_events(struct perf_evlist *evlist, const char *str,
 		int entries = data.idx - evlist->nr_entries;
 		struct perf_evsel *last;
 
+		if (!list_empty(&data.list)) {
+			last = list_entry(data.list.prev,
+					  struct perf_evsel, node);
+			last->cmdline_group_boundary = true;
+		} else
+			__WARN_printf("WARNING: event parser found nothing");
+
 		perf_evlist__splice_list_tail(evlist, &data.list, entries);
 		evlist->nr_groups += data.nr_groups;
-		last = perf_evlist__last(evlist);
-		last->cmdline_group_boundary = true;
 
 		return 0;
 	}
@@ -1252,7 +1262,13 @@ foreach_evsel_in_last_glob(struct perf_evlist *evlist,
 	struct perf_evsel *last = NULL;
 	int err;
 
-	if (evlist->nr_entries > 0)
+	/*
+	 * Don't return when list_empty, give func a chance to report
+	 * error when it found last == NULL.
+	 *
+	 * So no need to WARN here, let *func do this.
+	 */
+	if (!list_empty(&evlist->entries))
 		last = perf_evlist__last(evlist);
 
 	do {
