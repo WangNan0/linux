@@ -140,7 +140,7 @@ int test__bpf(void)
 	void *obj_buf;
 	size_t obj_buf_sz;
 
-	test_llvm__fetch_bpf_obj(&obj_buf, &obj_buf_sz);
+	test_llvm__fetch_bpf_obj(&obj_buf, &obj_buf_sz, LLVM_TESTCASE_BASE);
 	if (!obj_buf || !obj_buf_sz) {
 		if (verbose == 0)
 			fprintf(stderr, " (fix 'perf test LLVM' first)");
