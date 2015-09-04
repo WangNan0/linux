@@ -19,14 +19,37 @@ static int epoll_pwait_loop(void)
 	return 0;
 }
 
-static int prepare_bpf(void *obj_buf, size_t obj_buf_sz)
+#ifdef HAVE_BPF_PROLOGUE
+
+static int llseek_loop(void)
+{
+	int fds[2], i;
+
+	fds[0] = open("/dev/null", O_RDONLY);
+	fds[1] = open("/dev/null", O_RDWR);
+
+	if (fds[0] < 0 || fds[1] < 0)
+		return -1;
+
+	for (i = 0; i < NR_ITERS; i++) {
+		lseek(fds[i % 2], i, (i / 2) % 2 ? SEEK_CUR : SEEK_SET);
+		lseek(fds[(i + 1) % 2], i, (i / 2) % 2 ? SEEK_CUR : SEEK_SET);
+	}
+	close(fds[0]);
+	close(fds[1]);
+	return 0;
+}
+
+#endif
+
+static int prepare_bpf(const char *name, void *obj_buf, size_t obj_buf_sz)
 {
 	int err;
 	char errbuf[BUFSIZ];
 
-	err = bpf__prepare_load_buffer(obj_buf, obj_buf_sz, NULL);
+	err = bpf__prepare_load_buffer(obj_buf, obj_buf_sz, name);
 	if (err) {
-		bpf__strerror_prepare_load("[buffer]", false, err, errbuf,
+		bpf__strerror_prepare_load(name, false, err, errbuf,
 					   sizeof(errbuf));
 		fprintf(stderr, " (%s)", errbuf);
 		return TEST_FAIL;
@@ -49,7 +72,7 @@ static int prepare_bpf(void *obj_buf, size_t obj_buf_sz)
 	return 0;
 }
 
-static int do_test(void)
+static int do_test(int (*func)(void), int expect)
 {
 	struct record_opts opts = {
 		.target = {
@@ -106,7 +129,7 @@ static int do_test(void)
 	}
 
 	perf_evlist__enable(evlist);
-	epoll_pwait_loop();
+	(*func)();
 	perf_evlist__disable(evlist);
 
 	for (i = 0; i < evlist->nr_mmaps; i++) {
@@ -120,8 +143,8 @@ static int do_test(void)
 		}
 	}
 
-	if (count != (NR_ITERS + 1) / 2) {
-		fprintf(stderr, " (filter result incorrect)");
+	if (count != expect) {
+		fprintf(stderr, " (filter result incorrect: %d != %d)", count, expect);
 		err = -EBADF;
 	}
 
@@ -132,30 +155,30 @@ out_delete_evlist:
 	return 0;
 }
 
-int test__bpf(void)
+static int __test__bpf(int index, const char *name,
+		       const char *message_compile,
+		       const char *message_load,
+		       int (*func)(void), int expect)
 {
 	int err;
 	void *obj_buf;
 	size_t obj_buf_sz;
 
-	if (geteuid() != 0) {
-		fprintf(stderr, " (try run as root)");
-		return TEST_SKIP;
-	}
-
-	test_llvm__fetch_bpf_obj(&obj_buf, &obj_buf_sz, LLVM_TESTCASE_BASE);
-
+	test_llvm__fetch_bpf_obj(&obj_buf, &obj_buf_sz, index);
 	if (!obj_buf || !obj_buf_sz) {
 		if (verbose == 0)
-			fprintf(stderr, " (fix 'perf test LLVM' first)");
+			fprintf(stderr, " (%s)", message_compile);
 		return TEST_SKIP;
 	}
 
-	err = prepare_bpf(obj_buf, obj_buf_sz);
-	if (err)
+	err = prepare_bpf(name, obj_buf, obj_buf_sz);
+	if (err) {
+		if ((verbose == 0) && (message_load[0] != '\0'))
+			fprintf(stderr, " (%s)", message_load);
 		goto out;
+	}
 
-	err = do_test();
+	err = do_test(func, expect);
 	if (err)
 		goto out;
 out:
@@ -164,6 +187,38 @@ out:
 	if (err)
 		return TEST_FAIL;
 	return 0;
+}
+
+int test__bpf(void)
+{
+	int err;
+
+	if (geteuid() != 0) {
+		fprintf(stderr, " (try run as root)");
+		return TEST_SKIP;
+	}
+
+	err = __test__bpf(LLVM_TESTCASE_BASE,
+			  "[basic_bpf_test]",
+			  "fix 'perf test LLVM' first",
+			  "load bpf object failed",
+			  &epoll_pwait_loop,
+			  (NR_ITERS + 1) / 2);
+	if (err)
+		return err;
+
+#ifdef HAVE_BPF_PROLOGUE
+	err = __test__bpf(LLVM_TESTCASE_BPF_PROLOGUE,
+			  "[bpf_prologue_test]",
+			  "fix kbuild first",
+			  "check your vmlinux setting?",
+			  &llseek_loop,
+			  (NR_ITERS + 1) / 4);
+	return err;
+#else
+	fprintf(stderr, " (skip BPF prologue test)");
+	return TEST_OK;
+#endif
 }
 
 #else
