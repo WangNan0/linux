@@ -132,7 +132,7 @@ endif
 # The $(feature_display) controls the default detection message
 # output. It's set if:
 # - detected features differes from stored features from
-#   last build (in FEATURE-DUMP file)
+#   last build (in $(FEATURE_DUMP_FILENAME) file)
 # - one of the $(FEATURE_DISPLAY) is not detected
 # - VF is enabled
 
