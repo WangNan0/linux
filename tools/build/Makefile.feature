@@ -121,8 +121,9 @@ define feature_print_text_code
     MSG = $(shell printf '...%30s: %s' $(1) $(2))
 endef
 
+FEATURE_DUMP_FILENAME = $(OUTPUT)FEATURE-DUMP$(FEATURE_USER)
 FEATURE_DUMP := $(foreach feat,$(FEATURE_DISPLAY),feature-$(feat)($(feature-$(feat))))
-FEATURE_DUMP_FILE := $(shell touch $(OUTPUT)FEATURE-DUMP; cat $(OUTPUT)FEATURE-DUMP)
+FEATURE_DUMP_FILE := $(shell touch $(FEATURE_DUMP_FILENAME); cat $(FEATURE_DUMP_FILENAME))
 
 ifeq ($(dwarf-post-unwind),1)
   FEATURE_DUMP += dwarf-post-unwind($(dwarf-post-unwind-text))
@@ -136,7 +137,7 @@ endif
 # - VF is enabled
 
 ifneq ("$(FEATURE_DUMP)","$(FEATURE_DUMP_FILE)")
-  $(shell echo "$(FEATURE_DUMP)" > $(OUTPUT)FEATURE-DUMP)
+  $(shell echo "$(FEATURE_DUMP)" > $(FEATURE_DUMP_FILENAME))
   feature_display := 1
 endif
 
