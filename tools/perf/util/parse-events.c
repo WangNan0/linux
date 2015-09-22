@@ -516,6 +516,39 @@ int parse_events_add_tracepoint(struct list_head *list, int *idx,
 		return add_tracepoint_event(list, idx, sys, event, error);
 }
 
+struct __add_bpf_event_param {
+	struct parse_events_evlist *data;
+	struct list_head *list;
+};
+
+static int add_bpf_event(struct probe_trace_event *tev, int fd,
+			 void *_param)
+{
+	struct __add_bpf_event_param *param = _param;
+	struct parse_events_evlist *evlist = param->data;
+	struct list_head *list = param->list;
+	int err;
+
+	pr_debug("add bpf event %s:%s and attach bpf program %d\n",
+			tev->group, tev->event, fd);
+
+	err = parse_events_add_tracepoint(list, &evlist->idx, tev->group,
+					  tev->event, evlist->error);
+	if (err) {
+		struct perf_evsel *evsel, *tmp;
+
+		pr_debug("Failed to add BPF event %s:%s\n",
+			 tev->group, tev->event);
+		list_for_each_entry_safe(evsel, tmp, list, node) {
+			list_del(&evsel->node);
+			perf_evsel__delete(evsel);
+		}
+		return err;
+	}
+	pr_debug("adding %s:%s\n", tev->group, tev->event);
+	return 0;
+}
+
 int parse_events_load_bpf_obj(struct parse_events_evlist *data,
 			      struct list_head *list,
 			      struct bpf_object *obj)
@@ -523,6 +556,7 @@ int parse_events_load_bpf_obj(struct parse_events_evlist *data,
 	int err;
 	char errbuf[BUFSIZ];
 	static bool registered_unprobe_atexit = false;
+	struct __add_bpf_event_param param = {data, list};
 
 	if (IS_ERR(obj) || !obj) {
 		snprintf(errbuf, sizeof(errbuf),
@@ -548,12 +582,14 @@ int parse_events_load_bpf_obj(struct parse_events_evlist *data,
 		goto errout;
 	}
 
-	/*
-	 * Temporary add a dummy event here so we can check whether
-	 * basic bpf loader works. Will be removed in following patch.
-	 */
-	return parse_events_add_numeric(data, list, PERF_TYPE_SOFTWARE,
-					PERF_COUNT_SW_DUMMY, NULL);
+	err = bpf__foreach_tev(obj, add_bpf_event, &param);
+	if (err) {
+		snprintf(errbuf, sizeof(errbuf),
+			 "Attach events in BPF object failed");
+		goto errout;
+	}
+
+	return 0;
 errout:
 	data->error->help = strdup("(add -v to see detail)");
 	data->error->str = strdup(errbuf);
