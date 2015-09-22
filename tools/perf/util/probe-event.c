@@ -270,7 +270,7 @@ static int kernel_get_module_dso(const char *module, struct dso **pdso)
 
 	if (module) {
 		list_for_each_entry(dso, &host_machine->dsos.head, node) {
-			if (!dso->kernel)
+			if (dso->kernel)
 				continue;
 			if (strncmp(dso->short_name + 1, module,
 				    dso->short_name_len - 2) == 0)
