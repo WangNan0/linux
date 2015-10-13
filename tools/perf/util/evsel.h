@@ -87,6 +87,7 @@ struct perf_evsel {
 	int			idx;
 	u32			ids;
 	char			*name;
+	char			*alias;
 	double			scale;
 	const char		*unit;
 	struct event_format	*tp_format;
