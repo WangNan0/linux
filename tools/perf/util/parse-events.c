@@ -624,17 +624,79 @@ errout:
 	return err;
 }
 
+static int
+parse_events_config_bpf(struct parse_events_evlist *data,
+		       struct bpf_object *obj,
+		       struct list_head *head_config)
+{
+	struct parse_events_term *term;
+
+	if (!head_config || list_empty(head_config))
+		return 0;
+
+	list_for_each_entry(term, head_config, list) {
+		struct bpf_config_val val;
+		char errbuf[BUFSIZ];
+		int err;
+
+		if (term->type_term != PARSE_EVENTS__TERM_TYPE_USER) {
+			snprintf(errbuf, sizeof(errbuf),
+				 "Invalid config term for BPF object");
+			errbuf[BUFSIZ - 1] = '\0';
+
+			data->error->idx = term->err_term;
+			data->error->str = strdup(errbuf);
+			return -EINVAL;
+		}
+
+		switch (term->type_val) {
+		case PARSE_EVENTS__TERM_TYPE_NUM:
+			val.type = BPF_CONFIG_VAL_NUM;
+			val.num = (unsigned long long)term->val.num;
+			break;
+		case PARSE_EVENTS__TERM_TYPE_STR:
+			val.type = BPF_CONFIG_VAL_STRING;
+			val.string = term->val.str;
+			break;
+		default:
+			data->error->idx = term->err_val;
+			data->error->str = strdup("Invalid config value");
+			return -EINVAL;
+		}
+
+		err = bpf__config_obj(obj, term->config, &val, data->evlist);
+		if (err) {
+			bpf__strerror_config_obj(obj, term->config, &val,
+						 data->evlist, err, errbuf,
+						 sizeof(errbuf));
+			data->error->help = strdup(
+"Hint:\tValid config term:\n"
+"     \tmaps.<mapname>.event\n"
+"     \t(add -v to see detail)");
+			data->error->str = strdup(errbuf);
+			if (err == -EINVAL)
+				data->error->idx = term->err_val;
+			else
+				data->error->idx = term->err_term;
+			return err;
+		}
+	}
+	return 0;
+
+}
+
 int parse_events_load_bpf(struct parse_events_evlist *data,
 			  struct list_head *list,
 			  char *bpf_file_name,
-			  bool source)
+			  bool source,
+			  struct list_head *head_config)
 {
 	struct bpf_object *obj;
+	int err;
 
 	obj = bpf__prepare_load(bpf_file_name, source);
 	if (IS_ERR(obj) || !obj) {
 		char errbuf[BUFSIZ];
-		int err;
 
 		err = obj ? PTR_ERR(obj) : -EINVAL;
 
@@ -651,7 +713,10 @@ int parse_events_load_bpf(struct parse_events_evlist *data,
 		return err;
 	}
 
-	return parse_events_load_bpf_obj(data, list, obj);
+	err = parse_events_load_bpf_obj(data, list, obj);
+	if (err)
+		return err;
+	return parse_events_config_bpf(data, obj, head_config);
 }
 
 static int
