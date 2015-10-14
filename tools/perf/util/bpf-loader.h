@@ -9,6 +9,7 @@
 #include <linux/err.h>
 #include <string.h>
 #include "probe-event.h"
+#include "evlist.h"
 #include "debug.h"
 
 struct bpf_object;
@@ -16,6 +17,17 @@ struct bpf_object;
 
 typedef int (*bpf_prog_iter_callback_t)(struct probe_trace_event *tev,
 					int fd, void *arg);
+
+struct bpf_config_val {
+	enum {
+		BPF_CONFIG_VAL_STRING,
+		BPF_CONFIG_VAL_NUM,
+	} type;
+	union {
+		const char *string;
+		unsigned long long num;
+	};
+};
 
 #ifdef HAVE_LIBBPF_SUPPORT
 struct bpf_object *bpf__prepare_load(const char *filename, bool source);
@@ -34,6 +46,13 @@ int bpf__strerror_load(struct bpf_object *obj, int err,
 		       char *buf, size_t size);
 int bpf__foreach_tev(struct bpf_object *obj,
 		     bpf_prog_iter_callback_t func, void *arg);
+
+int bpf__config_obj(struct bpf_object *obj, const char *key,
+		    struct bpf_config_val *val, struct perf_evlist *evlist);
+int bpf__strerror_config_obj(struct bpf_object *obj,
+			     const char *key, struct bpf_config_val *val,
+			     struct perf_evlist *evlist,
+			     int err, char *buf, size_t size);
 #else
 static inline struct bpf_object *
 bpf__prepare_load(const char *filename __maybe_unused,
@@ -65,6 +84,15 @@ bpf__foreach_tev(struct bpf_object *obj __maybe_unused,
 }
 
 static inline int
+bpf__config_obj(struct bpf_object *obj __maybe_unused,
+		const char *key __maybe_unused,
+		struct bpf_config_val *val __maybe_unused,
+		struct perf_evlist *evlist __maybe_unused)
+{
+	return 0;
+}
+
+static inline int
 __bpf_strerror(char *buf, size_t size)
 {
 	if (!size)
@@ -87,6 +115,17 @@ bpf__strerror_probe(struct bpf_object *obj __maybe_unused,
 static inline int bpf__strerror_load(struct bpf_object *obj __maybe_unused,
 				     int err __maybe_unused,
 				     char *buf, size_t size)
+{
+	return __bpf_strerror(buf, size);
+}
+
+static inline int
+bpf__strerror_config_obj(struct bpf_object *obj __maybe_unused,
+			 const char *key __maybe_unused,
+			 struct bpf_config_val *val __maybe_unused,
+			 struct perf_evlist *evlist __maybe_unused,
+			 int err __maybe_unused,
+			 char *buf, size_t size)
 {
 	return __bpf_strerror(buf, size);
 }

@@ -10,6 +10,7 @@
 #include <linux/err.h>
 #include "perf.h"
 #include "debug.h"
+#include "util.h"
 #include "bpf-loader.h"
 #include "bpf-prologue.h"
 #include "llvm-utils.h"
@@ -633,6 +634,139 @@ int bpf__foreach_tev(struct bpf_object *obj,
 	return 0;
 }
 
+struct bpf_map_priv {
+	struct perf_evsel *evsel;
+};
+
+static void
+bpf_map_priv__clear(struct bpf_map *map __maybe_unused,
+		    void *_priv)
+{
+	struct bpf_map_priv *priv = _priv;
+
+	free(priv);
+}
+
+static int
+bpf__config_obj_map_event(struct bpf_map *map, const char *val,
+			  struct perf_evlist *evlist)
+{
+	struct bpf_map_priv *priv;
+	struct perf_evsel *evsel;
+	struct bpf_map_def def;
+	const char *map_name;
+	int err;
+
+	map_name = bpf_map__get_name(map);
+
+	evsel = perf_evlist__find_evsel_by_alias(evlist, val);
+	if (!evsel) {
+		pr_debug("Event '%s' doesn't exist\n", val);
+		return -EINVAL;
+	}
+
+	err = bpf_map__get_def(map, &def);
+	if (err) {
+		pr_debug("Unable to get map definition from '%s'\n",
+			 map_name);
+		return -EINVAL;
+	}
+
+	if (def.type != BPF_MAP_TYPE_PERF_EVENT_ARRAY) {
+		pr_debug("Map %s type is not BPF_MAP_TYPE_PERF_EVENT_ARRAY\n",
+			 map_name);
+		return -EINVAL;
+	}
+
+	priv = calloc(sizeof(*priv), 1);
+	if (!priv) {
+		pr_debug("No enough memory to alloc map private\n");
+		return -ENOMEM;
+	}
+
+	priv->evsel = evsel;
+	return bpf_map__set_private(map, priv, bpf_map_priv__clear);
+}
+
+struct bpf_config_map_func {
+	const char *config_opt;
+	int (*config_func)(struct bpf_map *, const char *,
+			   struct perf_evlist *);
+};
+
+struct bpf_config_map_func bpf_config_map_funcs[] = {
+	{"event", bpf__config_obj_map_event},
+};
+
+static int
+bpf__config_obj_map(struct bpf_object *obj,
+		    const char *key,
+		    const char *val,
+		    struct perf_evlist *evlist)
+{
+	/* key is "maps.<mapname>.<config opt>" */
+	char *map_name = strdup(key + sizeof("maps.") - 1);
+	struct bpf_map *map;
+	int err = -ENOENT;
+	char *map_opt;
+	size_t i;
+
+	if (!map_name)
+		return -ENOMEM;
+
+	map_opt = strchr(map_name, '.');
+	if (!map_opt) {
+		pr_debug("ERROR: Invalid map config: %s\n", map_name);
+		goto out;
+	}
+
+	*map_opt++ = '\0';
+	if (*map_opt == '\0') {
+		pr_debug("ERROR: Invalid map option: %s\n", key);
+		goto out;
+	}
+
+	map = bpf_object__get_map_by_name(obj, map_name);
+	if (!map) {
+		pr_debug("ERROR: Map %s doesn't exist\n", map_name);
+		goto out;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(bpf_config_map_funcs); i++) {
+		struct bpf_config_map_func *func = &bpf_config_map_funcs[i];
+
+		if (strcmp(map_opt, func->config_opt) == 0) {
+			err = func->config_func(map, val, evlist);
+			goto out;
+		}
+	}
+
+	pr_debug("ERROR: invalid config option '%s' for maps\n",
+		 map_opt);
+	err = -ENOENT;
+out:
+	free(map_name);
+	return err;
+}
+
+int bpf__config_obj(struct bpf_object *obj,
+		    const char *key,
+		    struct bpf_config_val *val,
+		    struct perf_evlist *evlist)
+{
+	if (!obj || !key || !val)
+		return -ENODEV;
+
+	if (!prefixcmp(key, "maps.")) {
+		if (val->type != BPF_CONFIG_VAL_STRING) {
+			pr_debug("ERROR: incorrect value type\n");
+			return -EINVAL;
+		}
+		return bpf__config_obj_map(obj, key, val->string, evlist);
+	}
+	return -ENODEV;
+}
+
 #define bpf__strerror_head(err, buf, size) \
 	char sbuf[STRERR_BUFSIZE], *emsg;\
 	if (!size)\
@@ -672,6 +806,19 @@ int bpf__strerror_load(struct bpf_object *obj __maybe_unused,
 	bpf__strerror_head(err, buf, size);
 	bpf__strerror_entry(EINVAL, "%s: Are you root and runing a CONFIG_BPF_SYSCALL kernel?",
 			    emsg)
+	bpf__strerror_end(buf, size);
+	return 0;
+}
+
+int bpf__strerror_config_obj(struct bpf_object *obj __maybe_unused,
+			     const char *key, struct bpf_config_val *val,
+			     struct perf_evlist *evlist __maybe_unused,
+			     int err, char *buf, size_t size)
+{
+	bpf__strerror_head(err, buf, size);
+	bpf__strerror_entry(ENODEV, "Invalid config option: '%s'", key)
+	bpf__strerror_entry(ENOENT, "Config target in '%s' is invalid", key)
+	bpf__strerror_entry(EINVAL, "Invalid config value %s", val)
 	bpf__strerror_end(buf, size);
 	return 0;
 }
