@@ -7,6 +7,7 @@
 
 #include <linux/bpf.h>
 #include <bpf/libbpf.h>
+#include <bpf/bpf.h>
 #include <linux/err.h>
 #include "perf.h"
 #include "debug.h"
@@ -767,6 +768,107 @@ int bpf__config_obj(struct bpf_object *obj,
 	return -ENODEV;
 }
 
+static int
+bpf__apply_config_map(struct bpf_map *map)
+{
+	struct bpf_map_priv *priv;
+	struct bpf_map_def def;
+	const char *name;
+	int err, map_fd;
+
+	name = bpf_map__get_name(map);
+	err = bpf_map__get_private(map, (void **)&priv);
+	if (err) {
+		pr_debug("ERROR: failed to get private field from map %s\n",
+			 name);
+		return err;
+	}
+	if (!priv) {
+		pr_debug("INFO: nothing to config for map %s\n", name);
+		return 0;
+	}
+
+	map_fd = bpf_map__get_fd(map);
+	if (map_fd < 0) {
+		pr_debug("ERROR: failed to get fd from map %s\n", name);
+		return map_fd;
+	}
+
+	err = bpf_map__get_def(map, &def);
+	if (err) {
+		pr_debug("ERROR: failed to retrive map def from map %s\n",
+			 name);
+		return err;
+	}
+
+	if (priv->evsel) {
+		struct xyarray *xy = priv->evsel->fd;
+		unsigned int cpus, i;
+
+		if (!xy) {
+			pr_debug("ERROR: event is not ready for map %s\n", name);
+			return -EINVAL;
+		}
+
+		if (xy->row_size / xy->entry_size != 1) {
+			pr_debug("ERROR: Dimension of target event is incorrect for map %s\n",
+				 name);
+			return -EINVAL;
+		}
+
+		cpus = xy->entries / (xy->row_size / xy->entry_size);
+		if (cpus > def.max_entries) {
+			pr_debug("ERROR: map %s needs to be enlarge to %d for its event\n",
+				 name, cpus);
+			return -EINVAL;
+		} else if (cpus < def.max_entries)
+			pr_debug("WARNING: map %s has more entries than required\n",
+				 name);
+
+		for (i = 0; i < cpus; i++) {
+			int *evt_fd = xyarray__entry(xy, i, 0);
+
+			err = bpf_map_update_elem(map_fd, &i, evt_fd,
+						  BPF_ANY);
+
+			if (err) {
+				pr_debug("ERROR: failed to insert fd %d to %s[%d]\n",
+					 *evt_fd, name, i);
+				return -errno;
+			}
+		}
+	}
+	return 0;
+}
+
+static int
+bpf__apply_config_object(struct bpf_object *obj)
+{
+	struct bpf_map *map;
+	int err;
+
+	bpf_map__for_each(map, obj) {
+		err = bpf__apply_config_map(map);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+
+int bpf__apply_config(void)
+{
+	struct bpf_object *obj, *tmp;
+	int err;
+
+	bpf_object__for_each_safe(obj, tmp) {
+		err = bpf__apply_config_object(obj);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
 #define bpf__strerror_head(err, buf, size) \
 	char sbuf[STRERR_BUFSIZE], *emsg;\
 	if (!size)\
@@ -819,6 +921,13 @@ int bpf__strerror_config_obj(struct bpf_object *obj __maybe_unused,
 	bpf__strerror_entry(ENODEV, "Invalid config option: '%s'", key)
 	bpf__strerror_entry(ENOENT, "Config target in '%s' is invalid", key)
 	bpf__strerror_entry(EINVAL, "Invalid config value %s", val)
+	bpf__strerror_end(buf, size);
+	return 0;
+}
+
+int bpf__strerror_apply_config(int err, char *buf, size_t size)
+{
+	bpf__strerror_head(err, buf, size);
 	bpf__strerror_end(buf, size);
 	return 0;
 }
